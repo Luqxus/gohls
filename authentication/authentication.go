@@ -16,10 +16,15 @@ import (
 type Authentication interface {
 	RegisterUser(ctx *fiber.Ctx) error
 	LoginUser(ctx *fiber.Ctx) error
+	AuthenticationStore() storage.AuthenticationStore
 }
 
 type UserAuthentication struct {
 	authenticationStore storage.AuthenticationStore
+}
+
+func (auth *UserAuthentication) AuthenticationStore() storage.AuthenticationStore {
+	return auth.authenticationStore
 }
 
 func NewUserAuthentication(authStore storage.AuthenticationStore) *UserAuthentication {
@@ -101,5 +106,5 @@ func (auth *UserAuthentication) LoginUser(ctx *fiber.Ctx) error {
 	ctx.Set("authorization", signedToken)
 
 	// TODO: return user
-	return ctx.Status(http.StatusFound).JSON(user)
+	return ctx.Status(http.StatusFound).JSON(user.FormatResponse())
 }

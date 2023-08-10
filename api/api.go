@@ -42,19 +42,34 @@ func (api *Api) Run(addr string) error {
 	return api.app.Listen(addr)
 }
 
+// TODO: upload video route
 func (api *Api) uploadVideo(ctx *fiber.Ctx) error {
 	c, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
-	// get video metaData
+
+	// TODO: get uid from Authorization
+	uid := ctx.Locals("uid").(string)
+	if uid == "" {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid user")
+	}
+
+	// TODO:get video metaData
 	var metaData = new(types.MetaData)
 	err := ctx.BodyParser(metaData)
 	if err != nil {
 		return ctx.Status(http.StatusBadRequest).JSON("invalid request body")
 	}
 
+	// TODO: fetch creator's user data
+	creator, err := api.authentication.AuthenticationStore().FetchUser(c, uid)
+	if err != nil {
+		return ctx.Status(http.StatusInternalServerError).JSON("user registration failed")
+	}
+
 	uniqueId := storage.NewID()
 	metaData.ID = uniqueId.ID()
 	// metaData.VideoID = uniqueId.String()
+	metaData.Creator = creator.FormatResponse()
 	metaData.VideoID = "sabrina"
 	metaData.VideoUrl = fmt.Sprintf("http://127.0.0.1:3000/media/video/%s", metaData.VideoID)
 
@@ -87,26 +102,8 @@ func (api *Api) uploadVideo(ctx *fiber.Ctx) error {
 	return ctx.Status(http.StatusCreated).JSON("video upload successful")
 }
 
-//
-//func (api *Api) search(ctx *fiber.Ctx) error {
-//
-//	// get filter text
-//	// query database for match
-//	// Elastic search
-//	return nil
-//}
-//
-//func (api *Api) fetchVideo(ctx *fiber.Ctx) error {
-//	// get video Id
-//	// find match in metaData database
-//	// return metaData to the user
-//	return nil
-//}
-//
-//func (api *Api) videoFrame(ctx *fiber.Ctx) error {
-//	// get videoId
-//	// get videoFrame / video segment name
-//	// return video segment file to the user
-//
-//	return nil
-//}
+// func (api *Api) FetchVideos(ctx *fiber.Ctx) error {
+// 	c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+// 	defer cancel()
+
+// }

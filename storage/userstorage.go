@@ -11,6 +11,7 @@ import (
 type AuthenticationStore interface {
 	CreateUser(ctx context.Context, user *types.User) error
 	FetchUser(ctx context.Context, email string) (*types.User, error)
+	FetchUserByUID(ctx context.Context, uid string) (*types.User, error)
 	CheckEmailExists(ctx context.Context, email string) (bool, error)
 	CheckUsernameExists(ctx context.Context, username string) (bool, error)
 }
@@ -67,6 +68,18 @@ func (auth *MongoAuthenticationStore) CreateUser(ctx context.Context, user *type
 func (auth *MongoAuthenticationStore) FetchUser(ctx context.Context, email string) (*types.User, error) {
 	filter := primitive.D{primitive.E{Key: "email", Value: email}}
 
+	user := new(types.User)
+
+	err := auth.collection.FindOne(ctx, filter).Decode(user)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (auth *MongoAuthenticationStore) FetchUserByUID(ctx context.Context, uid string) (*types.User, error) {
+	filter := primitive.D{primitive.E{Key: "uid", Value: uid}}
 	user := new(types.User)
 
 	err := auth.collection.FindOne(ctx, filter).Decode(user)
