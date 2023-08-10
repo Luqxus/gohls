@@ -102,8 +102,35 @@ func (api *Api) uploadVideo(ctx *fiber.Ctx) error {
 	return ctx.Status(http.StatusCreated).JSON("video upload successful")
 }
 
-// func (api *Api) FetchVideos(ctx *fiber.Ctx) error {
-// 	c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-// 	defer cancel()
+func (api *Api) FetchVideos(ctx *fiber.Ctx) error {
+	c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-// }
+	// TODO: fetch videos from database
+	videosMetaData, err := api.metaDataStore.FetchVideos(c)
+	if err != nil {
+		return ctx.Status(http.StatusInternalServerError).JSON("error fetching videos")
+	}
+
+	// TODO: return videos to user
+	return ctx.Status(http.StatusOK).JSON(videosMetaData)
+}
+
+func (api *Api) FetchVideoMetaData(ctx *fiber.Ctx) error {
+	c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// TODO: get videoID from request params
+	videoID := ctx.Params("videoID")
+	if videoID == "" {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid video id")
+	}
+
+	// TODO: fetch video with id from database
+	videoMetaData, err := api.metaDataStore.FetchVideoMetaData(c, videoID)
+	if err != nil {
+		return ctx.Status(http.StatusInternalServerError).JSON("error fetching video")
+	}
+
+	return ctx.Status(http.StatusFound).JSON(videoMetaData)
+}
