@@ -13,6 +13,10 @@ import (
 	"github.com/luqus/livespace/types"
 )
 
+var (
+	mediaPath = "media/videos"
+)
+
 type Api struct {
 	app                 *fiber.App
 	VideoProcessorQueue process.VideoProcessorQueue
@@ -38,6 +42,9 @@ func (api *Api) Run(addr string) error {
 
 	// TODO: upload video request
 	api.app.Post("/upload", api.uploadVideo)
+
+	// TODO: view video
+	api.app.Get("/stream/:videoID", api.ViewVideo)
 
 	return api.app.Listen(addr)
 }
@@ -133,4 +140,19 @@ func (api *Api) FetchVideoMetaData(ctx *fiber.Ctx) error {
 	}
 
 	return ctx.Status(http.StatusFound).JSON(videoMetaData)
+}
+
+func (api *Api) ViewVideo(ctx *fiber.Ctx) error {
+	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	videoID := ctx.Params("videoID")
+	if videoID == "" {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid video id")
+	}
+	filePath := fmt.Sprintf("%s/%s.m3u8", mediaPath, videoID)
+
+	ctx.Set("Content-Type", "text/plain;charset=utf-8")
+	ctx.Set("Access-Control-Allow-Origin", "*")
+	return ctx.SendFile(filePath)
 }
