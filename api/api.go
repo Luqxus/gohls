@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/luqus/livespace/authentication"
+	"github.com/luqus/livespace/middleware"
 	"github.com/luqus/livespace/process"
 	"github.com/luqus/livespace/storage"
 	"github.com/luqus/livespace/types"
@@ -40,11 +42,18 @@ func (api *Api) Run(addr string) error {
 
 	// go api.videoProcessorQueue.Run()
 
-	// TODO: upload video request
-	api.app.Post("/upload", api.uploadVideo)
+	// TODO: register user || create account
+	api.app.Post("/register", api.authentication.RegisterUser)
+	api.app.Post("/login", api.authentication.LoginUser)
 
 	// TODO: view video
 	api.app.Get("/stream/:videoID", api.ViewVideo)
+
+	// TODO: authorization middleware
+	api.app.Use(middleware.Authorization)
+
+	// TODO: upload video request
+	api.app.Post("/upload", api.uploadVideo)
 
 	return api.app.Listen(addr)
 }
@@ -61,11 +70,19 @@ func (api *Api) uploadVideo(ctx *fiber.Ctx) error {
 	}
 
 	// TODO:get video metaData
-	var metaData = new(types.MetaData)
-	err := ctx.BodyParser(metaData)
-	if err != nil {
-		return ctx.Status(http.StatusBadRequest).JSON("invalid request body")
+	// var metaData = new(types.MetaData)
+	// err := ctx.BodyParser(metaData)
+	// if err != nil {
+	// 	return ctx.Status(http.StatusBadRequest).JSON("invalid request body")
+	// }
+
+	metaString := ctx.FormValue("metaData")
+	if metaString == "" {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid video meta data")
 	}
+
+	metaData := new(types.MetaData)
+	json.Unmarshal([]byte(metaString), metaData)
 
 	// TODO: fetch creator's user data
 	creator, err := api.authentication.AuthenticationStore().FetchUser(c, uid)
@@ -150,7 +167,7 @@ func (api *Api) ViewVideo(ctx *fiber.Ctx) error {
 	if videoID == "" {
 		return ctx.Status(http.StatusBadRequest).JSON("invalid video id")
 	}
-	filePath := fmt.Sprintf("%s/%s.m3u8", mediaPath, videoID)
+	filePath := fmt.Sprintf("%s/%s", mediaPath, videoID)
 
 	ctx.Set("Content-Type", "text/plain;charset=utf-8")
 	ctx.Set("Access-Control-Allow-Origin", "*")
