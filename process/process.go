@@ -67,7 +67,8 @@ func (rq *RedisVideoProcessorQueue) worker(workerID int) {
 
 		err = Process(processID)
 		if err != nil {
-			log.Printf("video process at worker %d failed. processID: %s", workerID, processID)
+
+			log.Printf("video process at worker %d failed. processID: %s. error : %v", workerID, processID, err)
 			// TODO: alert Api of process result
 		}
 
@@ -79,6 +80,7 @@ func (rq *RedisVideoProcessorQueue) worker(workerID int) {
 
 func Process(filename string) error {
 
+	_ = os.Mkdir(fmt.Sprintf("media/videos/%s", filename), 0777)
 	// video to hls command
 	cmd := exec.Command(
 		"ffmpeg",
@@ -94,7 +96,7 @@ func Process(filename string) error {
 		"0",
 		"-f",
 		"hls",
-		"media/videos/"+filename+".m3u8",
+		"media/videos/"+filename+"/"+filename+".m3u8",
 	)
 
 	cmd.Stdout = os.Stdout

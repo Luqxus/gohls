@@ -2,9 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,7 +28,11 @@ type Api struct {
 }
 
 func New() *Api {
-	app := fiber.New()
+	app := fiber.New(
+		fiber.Config{
+			BodyLimit: 100 * 1024 * 1024,
+		},
+	)
 
 	userAuthenticationStore, metaDataStore := storage.NewStore()
 	return &Api{
@@ -47,83 +52,18 @@ func (api *Api) Run(addr string) error {
 	api.app.Post("/login", api.authentication.LoginUser)
 
 	// TODO: view video
-	api.app.Get("/stream/:videoID", api.ViewVideo)
+	api.app.Get("/stream/:filename", api.ViewVideo)
+	api.app.Get("/metadata", api.fetchMetaData)
 
 	// TODO: authorization middleware
-	api.app.Use(middleware.Authorization)
+	api.app.Use("/api", middleware.Authorization)
 
 	// TODO: upload video request
-	api.app.Post("/upload", api.uploadVideo)
+	api.app.Post("/api/upload/:videoID", api.handleChunks)
+	api.app.Post("/api/metadata", api.createMetaData)
+	api.app.Post("/api/upload/process/:videoID", api.processVideo)
 
 	return api.app.Listen(addr)
-}
-
-// TODO: upload video route
-func (api *Api) uploadVideo(ctx *fiber.Ctx) error {
-	c, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
-
-	// TODO: get uid from Authorization
-	uid := ctx.Locals("uid").(string)
-	if uid == "" {
-		return ctx.Status(http.StatusBadRequest).JSON("invalid user")
-	}
-
-	// TODO:get video metaData
-	// var metaData = new(types.MetaData)
-	// err := ctx.BodyParser(metaData)
-	// if err != nil {
-	// 	return ctx.Status(http.StatusBadRequest).JSON("invalid request body")
-	// }
-
-	metaString := ctx.FormValue("metaData")
-	if metaString == "" {
-		return ctx.Status(http.StatusBadRequest).JSON("invalid video meta data")
-	}
-
-	metaData := new(types.MetaData)
-	json.Unmarshal([]byte(metaString), metaData)
-
-	// TODO: fetch creator's user data
-	creator, err := api.authentication.AuthenticationStore().FetchUser(c, uid)
-	if err != nil {
-		return ctx.Status(http.StatusInternalServerError).JSON("user registration failed")
-	}
-
-	uniqueId := storage.NewID()
-	metaData.ID = uniqueId.ID()
-	// metaData.VideoID = uniqueId.String()
-	metaData.Creator = creator.FormatResponse()
-	metaData.VideoID = "sabrina"
-	metaData.VideoUrl = fmt.Sprintf("http://127.0.0.1:3000/media/video/%s", metaData.VideoID)
-
-	// get video
-	// videoFile, err := ctx.FormFile("video")
-	// if err != nil {
-	// 	return ctx.Status(http.StatusBadRequest).JSON("error fetching video")
-	// }
-
-	// TODO: save video file to filesystem
-	// err = ctx.SaveFile(videoFile, fmt.Sprintf("temps/videos/%s.mp4", metaData.VideoID))
-	// if err != nil {
-	// 	return ctx.Status(http.StatusInternalServerError).JSON("error uploading video")
-	// }
-
-	//TODO:  add video to processing queue
-	err = api.VideoProcessorQueue.AddProcess(metaData.VideoID)
-	if err != nil {
-		return ctx.Status(http.StatusInternalServerError).JSON("error processing video")
-	}
-
-	// TODO: save meta data
-
-	err = api.metaDataStore.CommitMetaData(c, metaData)
-	if err != nil {
-		return ctx.Status(http.StatusInternalServerError).JSON("we are fucked")
-	}
-
-	defer cancel()
-	return ctx.Status(http.StatusCreated).JSON("video upload successful")
 }
 
 func (api *Api) FetchVideos(ctx *fiber.Ctx) error {
@@ -159,7 +99,90 @@ func (api *Api) FetchVideoMetaData(ctx *fiber.Ctx) error {
 	return ctx.Status(http.StatusFound).JSON(videoMetaData)
 }
 
-func (api *Api) ViewVideo(ctx *fiber.Ctx) error {
+func (api *Api) createMetaData(ctx *fiber.Ctx) error {
+	c, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+
+	log.Println("create meta data api")
+
+	// TODO: get uid from Authorization
+	uid, ok := ctx.Locals("uid").(string)
+	if !ok {
+		print("uid interface to string failed")
+	}
+	if uid == "" {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid user")
+	}
+
+	// TODO:get video metaData
+	var metaData = new(types.MetaData)
+	err := ctx.BodyParser(metaData)
+	if err != nil {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid request body")
+	}
+
+	// TODO: fetch creator's user data
+	creator, err := api.authentication.AuthenticationStore().FetchUserByUID(c, uid)
+	if err != nil {
+		log.Print(err)
+		return ctx.Status(http.StatusInternalServerError).JSON("failed to fetch creator")
+	}
+
+	uniqueId := storage.NewID()
+	metaData.ID = uniqueId.ID()
+	metaData.VideoID = uniqueId.String()
+	metaData.Creator = creator.FormatResponse()
+	metaData.VideoUrl = fmt.Sprintf("http://127.0.0.1:8080/media/video/%s", metaData.VideoID)
+
+	err = api.metaDataStore.CommitMetaData(c, metaData)
+	if err != nil {
+		return ctx.Status(http.StatusInternalServerError).JSON("we are fucked")
+	}
+
+	ctx.Set("Access-Control-Allow-Origin", "*")
+
+	return ctx.Status(http.StatusCreated).JSON(metaData.VideoID)
+}
+
+func (api *Api) handleChunks(ctx *fiber.Ctx) error {
+	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	log.Println("handle chunks request")
+
+	// TODO: get video id from request params
+	videoID := ctx.Params("videoID")
+	if videoID == "" {
+		print("no video id provided")
+		return ctx.Status(http.StatusBadRequest).JSON("invalid video id")
+	}
+
+	// TODO: get multipart file from request
+	file, err := ctx.FormFile("file")
+	if err != nil {
+		fmt.Println(err)
+		ctx.Status(http.StatusBadRequest)
+		return ctx.Send([]byte(err.Error()))
+	}
+
+	// TODO: save the file to the file system
+	filename := fmt.Sprintf("temp/videos/%s.mp4", videoID)
+	fileData, _ := file.Open()
+	b := make([]byte, 15*1024*1024)
+	fileData.Read(b)
+
+	if err := os.WriteFile(filename, b, 0644); err != nil {
+		// An error occurred.
+		ctx.Status(http.StatusInternalServerError)
+		return ctx.Send([]byte(err.Error()))
+
+	}
+	ctx.Set("Access-Control-Allow-Origin", "*")
+
+	return ctx.Status(http.StatusCreated).JSON("File uploaded successfully!")
+}
+
+func (api *Api) processVideo(ctx *fiber.Ctx) error {
 	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -167,9 +190,72 @@ func (api *Api) ViewVideo(ctx *fiber.Ctx) error {
 	if videoID == "" {
 		return ctx.Status(http.StatusBadRequest).JSON("invalid video id")
 	}
-	filePath := fmt.Sprintf("%s/%s", mediaPath, videoID)
+
+	api.VideoProcessorQueue.AddProcess(videoID)
+	ctx.Set("Access-Control-Allow-Origin", "*")
+
+	return ctx.Status(http.StatusOK).JSON("upload complete")
+}
+
+func (api *Api) ViewVideo(ctx *fiber.Ctx) error {
+	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	filename := ctx.Params("filename")
+	if filename == "" {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid video id")
+	}
+	filePath := fmt.Sprintf("%s/%s/%s", mediaPath, "64d62218f8e3ee40e1feea48", filename)
 
 	ctx.Set("Content-Type", "text/plain;charset=utf-8")
 	ctx.Set("Access-Control-Allow-Origin", "*")
 	return ctx.SendFile(filePath)
+}
+
+// func (api *Api) uploadChunks(ctx *fiber.Ctx) error {
+// 	_, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+// 	defer cancel()
+
+// 	log.Println("upload chunks request route")
+
+// 	videoID := ctx.Params("videoID")
+// 	if videoID == "" {
+// 		return ctx.Status(http.StatusBadRequest).JSON("invalid video ID")
+// 	}
+
+// 	// TODO: check if videoID has  associated metaData
+// 	// TODO: if not return error
+
+// 	// TODO check if content-type = application-octet-stream
+// 	contentType := ctx.Get("Content-Type")
+// 	if contentType != "application-octet-stream" {
+// 		return ctx.Status(http.StatusUnsupportedMediaType).JSON("unsupported media type provided")
+// 	}
+
+// 	body := ctx.Body()
+
+// 	file, err := os.Create(fmt.Sprintf("temp/videos/%s.mp4", videoID))
+// 	if err != nil {
+// 		log.Println(err)
+// 		return ctx.Status(http.StatusInternalServerError).JSON("failed to create video file")
+// 	}
+
+// 	defer file.Close()
+// 	file.Write(body)
+
+// 	return ctx.Status(http.StatusOK).JSON("video file successfully uploaded")
+
+// }
+
+func (api *Api) fetchMetaData(ctx *fiber.Ctx) error {
+	c, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	metas, err := api.metaDataStore.FetchVideos(c)
+	if err != nil {
+		log.Println(err)
+		return ctx.Status(http.StatusInternalServerError).JSON("error fetching meta data")
+	}
+
+	return ctx.Status(http.StatusOK).JSON(metas)
 }

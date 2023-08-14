@@ -85,6 +85,12 @@ func (auth *UserAuthentication) LoginUser(ctx *fiber.Ctx) error {
 
 	loginInput := new(types.LoginInput)
 
+	// TODO: get login data from request body
+	err := ctx.BodyParser(loginInput)
+	if err != nil {
+		return ctx.Status(http.StatusBadRequest).JSON("invalid login inputs")
+	}
+
 	// TODO: fetch user with email
 	user, err := auth.authenticationStore.FetchUser(c, loginInput.Email)
 	if err != nil {

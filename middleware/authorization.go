@@ -21,7 +21,7 @@ func Authorization(ctx *fiber.Ctx) error {
 	}
 
 	// TODO: if valid add uid & username to context and serve resource
-	ctx.Locals("uid", uid)
-	ctx.Locals("username", username)
+	ctx.Locals("uid", *uid)
+	ctx.Locals("username", *username)
 	return ctx.Next()
 }

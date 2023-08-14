@@ -35,7 +35,7 @@ func (store *MongoMetaDataStore) FetchVideos(ctx context.Context) ([]*types.Meta
 
 	results := make([]*types.MetaData, 0)
 
-	if err := cursor.All(ctx, results); err != nil {
+	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
 	}
 

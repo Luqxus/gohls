@@ -12,7 +12,7 @@ func main() {
 
 	// }
 
-	port := "3000"
+	port := "8080"
 
 	api := api.New()
 	go api.VideoProcessorQueue.Run()
