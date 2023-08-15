@@ -53,7 +53,7 @@ func (api *Api) Run(addr string) error {
 
 	// TODO: view video
 	api.app.Get("/stream/:filename", api.ViewVideo)
-	api.app.Get("/metadata", api.fetchMetaData)
+	api.app.Get("/allmetadata", api.fetchMetaData)
 
 	// TODO: authorization middleware
 	api.app.Use("/api", middleware.Authorization)

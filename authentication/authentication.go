@@ -112,5 +112,5 @@ func (auth *UserAuthentication) LoginUser(ctx *fiber.Ctx) error {
 	ctx.Set("authorization", signedToken)
 
 	// TODO: return user
-	return ctx.Status(http.StatusFound).JSON(user.FormatResponse())
+	return ctx.Status(http.StatusOK).JSON(user.FormatResponse())
 }
